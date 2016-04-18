@@ -1,10 +1,12 @@
 import requests
+from collections import namedtuple
 
 
 wiki_url = 'https://en.wikipedia.org/wiki/List_of_elements'  # 'https://en.wikipedia.org/wiki/Hydrogen'  #
+Tag = namedtuple('Tag', ['name', 'attributes', 'content', 'depth', 'paired'])
 
 
-class HTMLParser:
+class Parser:
     def __init__(self, url):
         self.url = url
         page = requests.get(self.url)
@@ -12,7 +14,7 @@ class HTMLParser:
         self.remove_comments()
         if self.content[:15] == '<!DOCTYPE html>':
             self.content = self.content.split('\n', 1)[1]
-        self.tag_structure = self._parse()
+        self.tag_structure = self._make_tag_structure()
 
     def remove_comments(self):
         content = '-->' + self.content
@@ -29,47 +31,51 @@ class HTMLParser:
 
     @staticmethod
     def _parse_tag(string, pos):
-        tag = Tag({'name': None})
-
         left_pos = string.find('<', pos)
+        if left_pos == -1:
+            return {}, -1
+
         space_pos = string.find(' ', left_pos+1)
         right_bracket_pos = string.find('>', left_pos+1)
-        if left_pos == -1 or right_bracket_pos == -1:
-            return tag, -1
 
         content = string[right_bracket_pos+1:string.find('<', right_bracket_pos+1)]
-        tag['content'] = [content]
+        if content:
+            tag_content = [content]
+        else:
+            tag_content = []
 
         if string[right_bracket_pos-1] in ['/', '-']:
-            tag['non-pair'] = True
+            paired = False
+        else:
+            paired = True
 
         tag_attributes = dict()
-        if right_bracket_pos < space_pos or space_pos == -1:
-            tag['name'] = string[left_pos+1:right_bracket_pos]
+        if (right_bracket_pos < space_pos and right_bracket_pos != -1) or space_pos == -1:
+            tag_name = string[left_pos+1:right_bracket_pos]
         else:
             attr_string = string[left_pos:right_bracket_pos]
-            attr_list = [tag+'"' for tag in attr_string.split('" ')]
+            attr_list = [attr for attr in attr_string.split('" ')]
 
             try:
                 tag_name, first_attr = attr_list[0].split(' ', 1)
-                tag['name'] = tag_name[1:]
+                tag_name = tag_name[1:]
                 attr_list[0] = first_attr
             except ValueError:
-                print('E2', attr_list[0])
-                return {}, -1
+                print('E2 - ', attr_list[0])
+                return None, -1
 
             for attribute in attr_list:
-                if attribute in ['', '/', '/"', '"']:
-                    continue
-                try:
-                    name, value = attribute.split('=', 1)
-                    tag_attributes[name] = value.strip('"')
-                except ValueError:
-                    print('E1', attribute)
-        tag['attributes'] = tag_attributes
+                if attribute not in ['', '/', '/"', '"']:
+                    try:
+                        name, value = attribute.split('=', 1)
+                        tag_attributes[name] = value.strip('"')
+                    except ValueError:
+                        print('E1 - ', attribute)
+
+        tag = Tag(tag_name, tag_attributes, tag_content, -1, paired)
         return tag, right_bracket_pos
 
-    def _parse(self):
+    def _make_tag_structure(self):
         open_tags = dict()
         awaiting_tags = list()
         depth = 0
@@ -80,99 +86,83 @@ class HTMLParser:
                 if pos == -1:
                     break
 
-                if tag['name'][0] == '/':
+                if tag.name[0] == '/':
                     depth -= 1
-                    left_tag = open_tags[tag['name'][1:]].pop()
-
-                    indexes_to_remove = list()
-                    for i, awaiting_tag in enumerate(awaiting_tags):
-                        if awaiting_tag['depth'] == depth:
-                            left_tag['content'].append(awaiting_tag)
-                            indexes_to_remove.append(i)
-                    for index in sorted(indexes_to_remove, reverse=True):
-                        del awaiting_tags[index]
-
-                    left_tag['depth'] = depth
+                    left_tag = open_tags[tag.name[1:]].pop()
+                    content = left_tag.content
+                    for awaiting_tag in awaiting_tags:
+                        content.append(awaiting_tag)
+                    awaiting_tags = list()
+                    tag = Tag(left_tag.name, left_tag.attributes, content, depth, True)
                     if depth == 0:
-                        return left_tag
+                        return tag
                     else:
-                        awaiting_tags.append(left_tag)
+                        awaiting_tags.append(tag)
                 else:
-                    if 'non-pair' in tag.keys():
-                        del tag['non-pair']
-                        tag['depth'] = depth
+                    if not tag.paired:
+                        tag = (tag.name, tag.attributes, tag.content, depth, tag.paired)
                         awaiting_tags.append(tag)
                     else:
                         depth += 1
-                        if tag['name'] not in open_tags.keys():
-                            open_tags[tag['name']] = [tag]
+                        if tag.name not in open_tags.keys():
+                            open_tags[tag.name] = [tag]
                         else:
-                            open_tags[tag['name']].append(tag)
+                            open_tags[tag.name].append(tag)
 
-
-class Tag(dict):
-    def __init__(self, *args, **kwargs):
-        dict.__init__(*args, **kwargs)
-
-    def get_tag(self, tag_name, recursive=True):
+    def get_tag(self, tag_structure, tag_name, recursive=True):
         tags = list()
-        for content in self['content']:
+        for content in tag_structure.content:
             if isinstance(content, Tag):
-                if content['name'] == tag_name:
+                if content.name == tag_name:
                     tags.append(content)
                 if recursive:
-                    tags.extend(content.get_tag(tag_name))
+                    tags.extend(self.get_tag(content, tag_name))
         return tags
 
-    def remove_tag(self, tag_name, recursive=True):
-        for i, content in enumerate(self['tag_content']):
+    def remove_tag(self, tag_structure, tag_name, recursive=True):
+        tag_content = tag_structure.content
+        for i, content in tag_content:
             if isinstance(content, Tag):
-                if content['name'] == tag_name:
-                    del self['tag_content'][i]
+                if content.name == tag_name:
+                    del tag_content[i]
                 elif recursive:
-                    content.remove_tag(tag_name)
+                    tag_content[i] = self.remove_tag(content, tag_name)
+        tag = Tag(tag_structure.name, tag_structure.attributes, tag_content, tag_structure.depth, tag_structure.paired)
+        return tag
 
-    def str__(self):
+    def get_content_text(self, tag_structure):
         text = ''
-        for content in self['content']:
+        for content in tag_structure.content:
             if isinstance(content, str):
-                print(content)
                 text += content
             if isinstance(content, Tag):
-                text += str(content)
+                text += self.get_content_text(content)
         return text
 
 
-class WikiParser(HTMLParser):
+class WikiParser(Parser):
     def __init__(self, url):
-        HTMLParser.__init__(self, url)
+        Parser.__init__(self, url)
 
     def parse_std_list(self, table):
         def row_ok(r):
-            if r['tag_name'] != 'tr':
+            if r.name != 'tr':
                 return False
             for seq in ['9e99', '&#160']:
-                if seq in str(r):
+                if seq in self.get_content_text(r):
                     return False
             return True
 
-        table.remove_tag('sup')
-        for row in (r for r in table['tag_content'] if row_ok(r)):
+        table = self.remove_tag(table, 'sup')
+        for row in (r for r in table.content if row_ok(r)):
             print(row)
 
 
 wiki_parser = WikiParser(wiki_url)
-html = wiki_parser.tag_structure
+html = wiki_parser.tag_structure[0]
 # print(html)
-print('test1')
-print(wiki_parser.tag_structure)
-body = wiki_parser.tag_structure.get_tag('body', recursive=False)
-print(body)
-print('test2')
-for item in body['content']:
-    print(item)
-# main_table = body.get_tag('table')[0]
-# print('test3')
+body = wiki_parser.get_tag(html, 'body')[0]
+main_table = wiki_parser.get_tag(body, 'table')[0]
 # for row in main_table['tag_content']:
 #    print(wiki_parser.get_content_text(row))
-# wiki_parser.parse_std_list(main_table)
+wiki_parser.parse_std_list(main_table)
