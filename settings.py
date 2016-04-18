@@ -1,4 +1,4 @@
-from parser import parse_from_string
+from fileparser import parse_from_string
 from collections import OrderedDict
 from time import sleep
 import os.path
