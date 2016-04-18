@@ -2,8 +2,10 @@ import requests
 
 
 wiki_url = 'https://en.wikipedia.org/wiki/List_of_elements'
-# non paired tags: area, base, br, col, command, embed, hr, img, input, link, meta, param, source, wbr, keygen, track,
-# button
+non_paired_tags = ['area', 'base', 'br', 'col', 'command',
+                   'embed', 'hr', 'img', 'input', 'link',
+                   'meta', 'param', 'source', 'wbr', 'keygen',
+                   'track', 'button']
 
 
 class HTMLParser:
@@ -60,15 +62,34 @@ class HTMLParser:
                 ind += n
 
         tag = ''
-        for chunk in chunck_gen(self.content, 10):
+        content = ''
+        for chunk in chunck_gen(self.content, 1024):
             pos = -1
-            chunk = tag + chunk
+            chunk = tag + content + chunk
             while True:
                 tag, p = self._get_tag_from_string(chunk[pos+1:])
                 if p == -1:
+                    content = ''
                     break
                 pos += p
-                print(tag)
+                content, p = self._get_content_from_string(chunk[pos:])
+                if p == -1:
+                    break
+                pos += p
+                print(tag + content)
+
+    @staticmethod
+    def _get_content_from_string(string):
+        left_pos = string.find('>')+1
+        if left_pos == 0:
+            return '', -1
+        right_pos = string.find('<', left_pos)
+        if right_pos != -1:
+            content = string[left_pos:right_pos]
+        else:
+            content = string[left_pos:]
+            return content, -1
+        return content, right_pos-2
 
     @staticmethod
     def _get_tag_from_string(string):
