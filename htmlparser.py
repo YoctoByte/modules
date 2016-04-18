@@ -53,16 +53,16 @@ class HTMLParser:
         def chunck_gen(seq, n):
             ind = 0
             while True:
-                chk = seq[ind:ind+n-1]
+                chk = seq[ind:ind+n]
                 yield chk
                 if not chk:
                     break
                 ind += n
 
-        element = ''
-        for chunk in chunck_gen(self.content, 32):
+        tag = ''
+        for chunk in chunck_gen(self.content, 10):
             pos = -1
-            chunk = element + chunk
+            chunk = tag + chunk
             while True:
                 tag, p = self._get_tag_from_string(chunk[pos+1:])
                 if p == -1:
@@ -73,10 +73,13 @@ class HTMLParser:
     @staticmethod
     def _get_tag_from_string(string):
         left_pos = string.find('<')
+        if left_pos == -1:
+            return '', -1
         right_pos = string.find('>', left_pos)
         if right_pos != -1:
-            right_pos += 1
-        tag = string[left_pos:right_pos]
+            tag = string[left_pos:right_pos+1]
+        else:
+            tag = string[left_pos:]
         return tag, right_pos
 
 
