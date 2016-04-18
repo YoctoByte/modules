@@ -135,18 +135,16 @@ class Parser(object):
         self._data_sequence = new_data_sequence
 
     def _parse_value(self, string):
-        if string[0] == '[':
-            return self._parse_list(string)
-        elif string[0] == '(':
-            return self._parse_tuple(string)
+        if string[0] in ['[', '(']:
+            return self._parse_list_tuple(string)
+        elif string[0] == '{':
+            return self._parse_dict(string)
         elif string == 'True':
             return True
         elif string == 'False':
             return False
         elif string == 'None':
             return None
-        elif string[0] == '{':
-            return self._parse_dict(string)
         elif string[0] in ["'", '"']:
             if string[0] != string[-1]:
                 raise TypeError('String is not parsed correctly')
@@ -160,51 +158,44 @@ class Parser(object):
             except ValueError:
                 return string
 
-    def _parse_list(self, list_string):
-        new_list = list()
-        list_strings = list_string[1:-1].split(',')
+    def _parse_list_tuple(self, string):
+        return_value = list()
+
+        if string[0] == '(':
+            data_type = list
+        elif string[0] == '[':
+            data_type = tuple
+        else:
+            data_type = None
+
+        items_strings = string[1:-1].split(',')
+        if not items_strings[-1]:
+            del items_strings[-1]
 
         new_string = ''
-        for string in list_strings:
+        for item_string in items_strings:
             if new_string == '':
-                new_string = string.lstrip()
+                new_string = item_string.lstrip()
             else:
-                new_string += ',' + string
+                new_string += ',' + item_string
 
             if not new_string:
                 continue
             if new_string[0] in self.first_chars:
                 if self._matches(new_string.rstrip()):
-                    new_list.append(self._parse_value(new_string.rstrip()))
+                    return_value.append(self._parse_value(new_string.rstrip()))
                     new_string = ''
                 continue
 
-            new_list.append(self._parse_value(new_string.rstrip()))
+            return_value.append(self._parse_value(new_string.rstrip()))
             new_string = ''
-        return new_list
 
-    def _parse_tuple(self, tuple_string):
-        tuple_list = list()
-        tuple_strings = tuple_string[1:-1].split(',')
-
-        new_string = ''
-        for string in tuple_strings:
-            if new_string == '':
-                new_string = string.lstrip()
-            else:
-                new_string += ',' + string
-
-            if not new_string:
-                continue
-            if new_string[0] in self.first_chars:
-                if self._matches(new_string.rstrip()):
-                    tuple_list.append(self._parse_value(new_string.rstrip()))
-                    new_string = ''
-                continue
-
-            tuple_list.append(self._parse_value(new_string.rstrip()))
-            new_string = ''
-        return tuple(tuple_list)
+        if data_type == list:
+            return return_value
+        elif data_type == tuple:
+            return tuple(return_value)
+        else:
+            return None
 
     def _parse_dict(self, dict_string):
         new_dict = dict()

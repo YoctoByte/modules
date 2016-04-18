@@ -37,3 +37,18 @@ class Settings:
 
     def update(self):
         self.parser.update()
+
+settings1 = Settings('testfile')
+settings2 = Settings('testfile')
+settings3 = Settings('testfile2')
+
+# settings1['test1'] = ([{'keeeey': 'value'}], 'string', [0, 1, [[2]], 3], (True, None, False))
+settings2['test2'] = 2
+
+print(settings2['test1'])
+print(settings1['test2'])
+
+settings3['test1'] = 5
+
+print(settings1['test1'])
+print(settings3['test1'])
