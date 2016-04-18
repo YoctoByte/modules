@@ -1,13 +1,11 @@
 from parser import parse_string
 from collections import OrderedDict
 from time import sleep
+from threading import Thread
 import os.path
 
 
-# known errors: some items are converted to sting instead of their real type.
-
-
-class Settings:
+class Database:
     _instances = dict()
     _files = list()
 
@@ -22,12 +20,12 @@ class Settings:
         if not os.path.isfile(filename):
             pass
 
-        if self.path not in Settings._files:
-            Settings._files.append(self.path)
+        if self.path not in Database._files:
+            Database._files.append(self.path)
             self.parser = FileParser(self.path)
-            Settings._instances[self.path] = self.parser
+            Database._instances[self.path] = self.parser
         else:
-            self.parser = Settings._instances[self.path]
+            self.parser = Database._instances[self.path]
 
     def __setitem__(self, key, value):
         self.parser[key] = value
@@ -57,7 +55,7 @@ class FileParser:
     def __setitem__(self, key, value):
         self.check_value_key(value, key)
         self._data[key] = value
-        self._write_to_file()
+        Thread(target=self._write_to_file).start()
 
     def __getitem__(self, item):
         for key in self._data:
@@ -90,13 +88,9 @@ class FileParser:
         self._data = new_data
 
     def _write_to_file(self):
-        file_string = ''
-
-        for key in self._data:
-            file_string += str(key) + ' = ' + str(self._data[key]) + '\n'
-
         file = open(self.filename, 'w')
-        file.write(file_string)
+        for key in self._data:
+            file.write(str(key) + ' = ' + str(self._data[key]) + '\n')
         file.close()
 
     @staticmethod
