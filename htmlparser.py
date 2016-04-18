@@ -1,4 +1,4 @@
-# import requests
+import requests
 
 
 wiki_url = 'https://en.wikipedia.org/wiki/List_of_elements'
@@ -8,17 +8,33 @@ wiki_url = 'https://en.wikipedia.org/wiki/List_of_elements'
 
 class HTMLParser:
     def __init__(self, url):
-        self.url = url
+        # self.url = url
         # page = requests.get(self.url)
         # self.content = page.content.decode('utf-8')
-        # self.content.replace('<br>', '\n')
-        # self.remove_comments()
-        # if self.content[:9] == '<!DOCTYPE':
-        #     self.content = self.content.split('\n', 1)[1]
-        with open('example2.html', 'r') as file:
-            self.content = file.read()
-            file.close()
+
+        file = open('files/test.html', 'r')
+        self.content = file.read()
+        file.close()
+
+        # 'compress' the html string to a single line
+        new_content = ''
+        for line in self.content.split('\n'):
+            new_content += line.strip()
+        self.content = new_content
+
+        self.remove_comments()
+        self.remove_doctype()
+
+        print(self.content)
         self.elements = self._parse()
+        print(self.elements)
+
+    def remove_doctype(self):
+        left_pos = self.content.find('<')
+        right_pos = self.content.find('>')
+        first_tag = self.content[left_pos:right_pos+1]
+        if first_tag[:9] == '<!DOCTYPE':
+            self.content = self.content[right_pos+1:]
 
     def remove_comments(self):
         content = '-->' + self.content
@@ -34,87 +50,34 @@ class HTMLParser:
         self.content = new_content
 
     def _parse(self):
-        open_tags = dict()  # dict with tagnames as keys and lists containing tags corresponding to that names as values
-        awaiting_elements = list()
-        depth = 0
-        for line in self.content.split('\n'):
-            pos = -1
+        def chunck_gen(seq, n):
+            ind = 0
             while True:
-                element, pos = self._parse_element(line, pos+1)
-                if pos == -1:
+                chk = seq[ind:ind+n-1]
+                yield chk
+                if not chk:
                     break
+                ind += n
 
-                if element.name[0] == '/':  # if element is closing tag.
-                    depth -= 1
-                    left_tag = open_tags[element.name[1:]].pop()
-                    left_tag.depth = depth
-
-                    indexes_to_remove = list()
-                    for i, awaiting_element in enumerate(awaiting_elements):
-                        if awaiting_element.depth > depth:
-                            left_tag.append(awaiting_element)
-                            indexes_to_remove.append(i)
-                    for index in sorted(indexes_to_remove, reverse=True):
-                        del awaiting_elements[index]
-
-                    if depth == 0:
-                        return left_tag
-                    else:
-                        if not awaiting_elements:
-                            awaiting_elements = [left_tag]
-                        else:
-                            awaiting_elements.append(left_tag)
-                else:
-                    if not element.paired:  # if element is a non-pairing or self closing tag.
-                        element.depth = depth
-                        awaiting_elements.append(element)
-                    else:
-                        depth += 1
-                        if element.name in open_tags:
-                            open_tags[element.name].append(element)
-                        else:
-                            open_tags[element.name] = [element]
+        element = ''
+        for chunk in chunck_gen(self.content, 32):
+            pos = -1
+            chunk = element + chunk
+            while True:
+                tag, p = self._get_tag_from_string(chunk[pos+1:])
+                if p == -1:
+                    break
+                pos += p
+                print(tag)
 
     @staticmethod
-    def _parse_element(string, pos):
-        element = Element()
-
-        left_pos = string.find('<', pos)
-        space_pos = string.find(' ', left_pos+1)
-        right_bracket_pos = string.find('>', left_pos+1)
-        if left_pos == -1 or right_bracket_pos == -1:
-            return Element(), -1
-
-        content = string[right_bracket_pos+1:string.find('<', right_bracket_pos+1)]
-        element.append(content)
-
-        element.paired = False if string[right_bracket_pos-1] in ['/', '-'] else True
-
-        if right_bracket_pos < space_pos or space_pos == -1:
-            element.name = string[left_pos+1:right_bracket_pos]
-        else:
-            attr_string = string[left_pos:right_bracket_pos]
-            attr_list = [attr.strip('"') for attr in attr_string.split('" ')]
-
-            try:
-                tag_name, first_attr = attr_list[0].split(' ', 1)
-                element.name = tag_name[1:]
-                attr_list[0] = first_attr
-            except ValueError:
-                print('E2', attr_list[0])
-                return Element(), -1
-
-            tag_attributes = dict()
-            for attribute in attr_list:
-                if attribute in ['', '/', '/"', '"']:
-                    continue
-                try:
-                    name, value = attribute.split('=', 1)
-                    tag_attributes[name] = value.strip('"')
-                except ValueError:
-                    print('E1', attribute)
-            element.attributes = tag_attributes
-        return element, right_bracket_pos
+    def _get_tag_from_string(string):
+        left_pos = string.find('<')
+        right_pos = string.find('>', left_pos)
+        if right_pos != -1:
+            right_pos += 1
+        tag = string[left_pos:right_pos]
+        return tag, right_pos
 
 
 class Element:
@@ -162,14 +125,14 @@ class Element:
         for item in self.content:
             yield item
 
-    def __str__(self):
+    def to_text(self):
         text = ''
         for content in self.content:
             if isinstance(content, str):
                 print(content)
                 text += content
             if isinstance(content, Element):
-                text += str(content)
+                text += content.to_text()
         return text
 
 
@@ -196,6 +159,3 @@ class WikiParser(HTMLParser):
 
 
 wiki_parser = WikiParser(wiki_url)
-html = wiki_parser.elements
-table = html.get_elements('table')[0]
-wiki_parser.parse_std_list(table)
