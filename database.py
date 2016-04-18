@@ -1,4 +1,4 @@
-from parser import parse_string
+from parser import parse_from_string
 from collections import OrderedDict
 from time import sleep
 from threading import Thread
@@ -33,9 +33,6 @@ class Database:
     def __getitem__(self, item):
         return self.parser[item]
 
-    def update(self):
-        self.parser.update()
-
 
 class FileParser:
     def __init__(self, filename):
@@ -58,10 +55,7 @@ class FileParser:
         Thread(target=self._write_to_file).start()
 
     def __getitem__(self, item):
-        for key in self._data:
-            if key == item:
-                return self._data[key]
-        raise KeyError
+        return self._data[item]
 
     def _read_from_file(self):
         for i in range(100):
@@ -83,7 +77,7 @@ class FileParser:
             key = line.split('=', 1)[0].strip()
             if key in new_data:
                 raise KeyError('Key "' + key + '" is found more than once in ' + self.filename)
-            value = parse_string(line.split('=', 1)[1].strip())
+            value = parse_from_string(line.split('=', 1)[1].strip())
             new_data[key] = value
         self._data = new_data
 
@@ -100,19 +94,3 @@ class FileParser:
                 raise TypeError('Parser only accepts values of these types: int, float, str, bool, list, dict, tuple')
         if '=' in key:
             raise KeyError("Key may not contain '=' signs")
-
-
-settings1 = Settings('testfile')
-settings2 = Settings('testfile')
-settings3 = Settings('testfile2')
-
-# settings1['test1'] = ([{'kee:eey': 'value'}], 'string', [0, 1, [3, [([[4]],), 5]], 6], (True, None, False))
-settings2['test2'] = 2
-
-print(settings2['test1'])
-print(settings1['test2'])
-
-settings3['test1'] = 5
-
-print(settings1['test1'])
-print(settings3['test1'])
