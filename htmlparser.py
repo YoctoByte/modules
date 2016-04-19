@@ -10,13 +10,13 @@ non_paired_tags = ['area', 'base', 'br', 'col', 'command',
 
 class HTMLParser:
     def __init__(self, url):
-        # self.url = url
-        # page = requests.get(self.url)
-        # self.content = page.content.decode('utf-8')
+        self.url = url
+        page = requests.get(self.url)
+        self.content = page.content.decode('utf-8')
 
-        file = open('files/test.html', 'r')
-        self.content = file.read()
-        file.close()
+        # file = open('files/test.html', 'r')
+        # self.content = file.read()
+        # file.close()
 
         # 'compress' the html string to a single line
         new_content = ''
@@ -95,8 +95,11 @@ class HTMLParser:
                     else:
                         awaiting_elements.append(element)
                 else:
-                    depth -= 1
-                    element = open_tags[element.name[1:]].pop()
+                    try:
+                        element = open_tags[element.name[1:]].pop()
+                        depth -= 1
+                    except KeyError:
+                        continue
                     indexes_to_remove = list()
                     for index, awaiting_element in enumerate(awaiting_elements):
                         if awaiting_element.depth > depth:
