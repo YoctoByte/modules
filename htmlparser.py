@@ -27,9 +27,7 @@ class HTMLParser:
         self.remove_comments()
         self.remove_doctype()
 
-        print(self.content)
         self.elements = self._parse()
-        print(self.elements)
 
     def remove_doctype(self):
         left_pos = self.content.find('<')
@@ -61,22 +59,76 @@ class HTMLParser:
                     break
                 ind += n
 
-        tag = ''
-        content = ''
-        for chunk in chunck_gen(self.content, 1024):
+        open_tags = dict()
+        awaiting_elements = list()
+        depth = 0
+
+        tag, content = '', ''
+        for chunk in chunck_gen(self.content+'<>', 1024):
             pos = -1
             chunk = tag + content + chunk
             while True:
                 tag, p = self._get_tag_from_string(chunk[pos+1:])
                 if p == -1:
-                    content = ''
                     break
                 pos += p
                 content, p = self._get_content_from_string(chunk[pos:])
                 if p == -1:
                     break
                 pos += p
-                print(tag + content)
+
+                tag_name, attributes = self._parse_tag(tag)
+                element = Element(name=tag_name, attributes=attributes, depth=depth, content=[content])
+
+                if element.name in non_paired_tags:
+                    element.paired = False
+                else:
+                    element.paired = True
+
+                if element.name[0] != '/':  # if element is not closing tag
+                    if element.paired:
+                        depth += 1
+                        if element.name in open_tags:
+                            open_tags[element.name].append(element)
+                        else:
+                            open_tags[element.name] = [element]
+                    else:
+                        awaiting_elements.append(element)
+                else:
+                    depth -= 1
+                    element = open_tags[element.name[1:]].pop()
+                    indexes_to_remove = list()
+                    for index, awaiting_element in enumerate(awaiting_elements):
+                        if awaiting_element.depth > depth:
+                            element.content.append(awaiting_element)
+                            indexes_to_remove.append(index)
+                    for index in sorted(indexes_to_remove, reverse=True):
+                        del awaiting_elements[index]
+
+                    if element.name == 'html':
+                        return element
+                    else:
+                        awaiting_elements.append(element)
+
+    @staticmethod
+    def _parse_tag(tag_string):
+        tag_string = tag_string.lstrip('<').rstrip('>')
+        raw_attributes = tag_string.split(' ')
+        tag_name = raw_attributes.pop(0)
+        attributes = dict()
+        prev_attr = ''
+        while raw_attributes:
+            attribute = prev_attr + raw_attributes.pop(0)
+            try:
+                if attribute[-1] == '"':
+                    key, value = attribute.split('=', 1)
+                    attributes[key] = value
+                    prev_attr = ''
+                else:
+                    prev_attr = attribute
+            except IndexError:
+                prev_attr = ''
+        return tag_name, attributes
 
     @staticmethod
     def _get_content_from_string(string):
@@ -105,11 +157,12 @@ class HTMLParser:
 
 
 class Element:
-    def __init__(self, name='', depth=-1, attributes=None, content=None):
+    def __init__(self, name='', depth=-1, attributes=None, content=None, paired=None):
         self.attributes = dict()
         self.content = list()
         self.name = name
         self.depth = depth
+        self.paired = paired
         if attributes:
             self.attributes = attributes
         if content:
@@ -159,6 +212,12 @@ class Element:
                 text += content.to_text()
         return text
 
+    def __str__(self):
+        content_string = ''
+        for item in self.content:
+            content_string += str(item)
+        return '<' + self.name + ' ' + str(self.attributes) + '>\n' + content_string
+
 
 class WikiParser(HTMLParser):
     def __init__(self, url):
@@ -183,3 +242,6 @@ class WikiParser(HTMLParser):
 
 
 wiki_parser = WikiParser(wiki_url)
+print(wiki_parser.elements)
+
+# print(wiki_parser.elements.to_text())
