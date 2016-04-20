@@ -1,171 +1,78 @@
 import requests
 
-
 wiki_url = 'https://en.wikipedia.org/wiki/List_of_elements'
 non_paired_tags = ['area', 'base', 'br', 'col', 'command',
                    'embed', 'hr', 'img', 'input', 'link',
                    'meta', 'param', 'source', 'wbr', 'keygen',
                    'track', 'button']
 
+# todo: remove docstring
 
-class HTMLParser:
-    def __init__(self, url):
-        self.url = url
-        page = requests.get(self.url)
-        self.content = page.content.decode('utf-8')
 
-        # file = open('files/test.html', 'r')
-        # self.content = file.read()
-        # file.close()
+def parse_from_url(url):
+    page = requests.get(url)
+    html_string = page.content.decode('utf-8')
+    return parse_from_string(html_string)
 
-        # 'compress' the html string to a single line
-        new_content = ''
-        for line in self.content.split('\n'):
-            new_content += line.strip()
-        self.content = new_content
 
-        self.remove_comments()
-        self.remove_doctype()
+def parse_from_file(filename):
+    with open(filename, 'r') as file:
+        html_string = file.read()
+        file.close()
+    return parse_from_string(html_string)
 
-        self.elements = self._parse()
 
-    def remove_doctype(self):
-        left_pos = self.content.find('<')
-        right_pos = self.content.find('>')
-        first_tag = self.content[left_pos:right_pos+1]
-        if first_tag[:9] == '<!DOCTYPE':
-            self.content = self.content[right_pos+1:]
+def parse_from_string(html_string):
+    # Compress the string to a single line:
+    new_string = ''
+    for line in html_string.split('\n'):
+        new_string += line.strip()
+    html_string = new_string
 
-    def remove_comments(self):
-        content = '-->' + self.content
-        new_content = ''
-        right_pos = 0
-        while True:
-            left_pos = content.find('-->', right_pos)+3
-            right_pos = content.find('<!--', left_pos)
-            if right_pos == -1:
-                new_content += content[left_pos:]
-                break
-            new_content += content[left_pos:right_pos]
-        self.content = new_content
+    chunk_size = 80
+    super_chunk = ''
+    pos = 0
+    for chunk in (html_string[i:i+chunk_size] for i in range(0, len(html_string)+1, chunk_size)):
+        super_chunk += chunk
+        while pos != -1:
+            element, pos = _parse_chunk(super_chunk)
+            print(element.name)
+            if pos != -1:
+                super_chunk = super_chunk[pos:]
 
-    def _parse(self):
-        def chunck_gen(seq, n):
-            ind = 0
-            while True:
-                chk = seq[ind:ind+n]
-                yield chk
-                if not chk:
-                    break
-                ind += n
 
-        open_tags = dict()
-        awaiting_elements = list()
-        depth = 0
+def _parse_chunk(chunk):
+    left_pos = chunk.find('<')
+    right_pos = chunk.find('>', left_pos)+1
+    next_left = chunk.find('<', right_pos)
 
-        tag, content = '', ''
-        for chunk in chunck_gen(self.content+'<>', 1024):
-            pos = -1
-            chunk = tag + content + chunk
-            while True:
-                tag, p = self._get_tag_from_string(chunk[pos+1:])
-                if p == -1:
-                    break
-                pos += p
-                content, p = self._get_content_from_string(chunk[pos:])
-                if p == -1:
-                    break
-                pos += p
+    text = chunk[right_pos:next_left]
+    tag_string = chunk[left_pos+1:right_pos-1]
+    attribute_strings = tag_string.split(' ')
+    tag_name = attribute_strings.pop(0)
 
-                tag_name, attributes = self._parse_tag(tag)
-                element = Element(name=tag_name, attributes=attributes, depth=depth, content=[content])
+    attributes_dict = dict()
+    for attribute in attribute_strings:
+        try:
+            key, value = attribute.split('=', 1)
+        except ValueError:
+            key, value = attribute, ''
+        attributes_dict[key] = value.strip('"')
 
-                if element.name in non_paired_tags:
-                    element.paired = False
-                else:
-                    element.paired = True
-
-                if element.name[0] != '/':  # if element is not closing tag
-                    if element.paired:
-                        depth += 1
-                        if element.name in open_tags:
-                            open_tags[element.name].append(element)
-                        else:
-                            open_tags[element.name] = [element]
-                    else:
-                        awaiting_elements.append(element)
-                else:
-                    try:
-                        element = open_tags[element.name[1:]].pop()
-                        depth -= 1
-                    except KeyError:
-                        continue
-                    indexes_to_remove = list()
-                    for index, awaiting_element in enumerate(awaiting_elements):
-                        if awaiting_element.depth > depth:
-                            element.content.append(awaiting_element)
-                            indexes_to_remove.append(index)
-                    for index in sorted(indexes_to_remove, reverse=True):
-                        del awaiting_elements[index]
-
-                    if element.name == 'html':
-                        return element
-                    else:
-                        awaiting_elements.append(element)
-
-    @staticmethod
-    def _parse_tag(tag_string):
-        tag_string = tag_string.lstrip('<').rstrip('>')
-        raw_attributes = tag_string.split(' ')
-        tag_name = raw_attributes.pop(0)
-        attributes = dict()
-        prev_attr = ''
-        while raw_attributes:
-            attribute = prev_attr + raw_attributes.pop(0)
-            try:
-                if attribute[-1] == '"':
-                    key, value = attribute.split('=', 1)
-                    attributes[key] = value
-                    prev_attr = ''
-                else:
-                    prev_attr = attribute
-            except IndexError:
-                prev_attr = ''
-        return tag_name, attributes
-
-    @staticmethod
-    def _get_content_from_string(string):
-        left_pos = string.find('>')+1
-        if left_pos == 0:
-            return '', -1
-        right_pos = string.find('<', left_pos)
-        if right_pos != -1:
-            content = string[left_pos:right_pos]
-        else:
-            content = string[left_pos:]
-            return content, -1
-        return content, right_pos-2
-
-    @staticmethod
-    def _get_tag_from_string(string):
-        left_pos = string.find('<')
-        if left_pos == -1:
-            return '', -1
-        right_pos = string.find('>', left_pos)
-        if right_pos != -1:
-            tag = string[left_pos:right_pos+1]
-        else:
-            tag = string[left_pos:]
-        return tag, right_pos
+    element = Element(name=tag_name, text=text, attributes=attributes_dict)
+    if element.name == '/html':
+        return element, 0
+    return element, right_pos
 
 
 class Element:
-    def __init__(self, name='', depth=-1, attributes=None, content=None, paired=None):
+    def __init__(self, name='', depth=-1, attributes=None, content=None, paired=None, text=''):
         self.attributes = dict()
         self.content = list()
         self.name = name
         self.depth = depth
         self.paired = paired
+        self.text = text
         if attributes:
             self.attributes = attributes
         if content:
@@ -206,13 +113,9 @@ class Element:
             yield item
 
     def to_text(self):
-        text = ''
+        text = self.text
         for content in self.content:
-            if isinstance(content, str):
-                print(content)
-                text += content
-            if isinstance(content, Element):
-                text += content.to_text()
+            text += content.to_text()
         return text
 
     def __str__(self):
@@ -222,29 +125,4 @@ class Element:
         return '<' + self.name + ' ' + str(self.attributes) + '>\n' + content_string
 
 
-class WikiParser(HTMLParser):
-    def __init__(self, url):
-        HTMLParser.__init__(self, url)
-
-    @staticmethod
-    def parse_std_list(table):
-        def row_ok(r):
-            if not isinstance(r, Element):
-                return False
-            if r.name != 'tr':
-                return False
-            for seq in ['9e99', '&#160']:
-                if seq in str(r):
-                    return False
-            return True
-
-        table.remove_elements('sup')
-        table.remove_elements('span', attribute=('class', 'sortkey'))
-        for row in (r for r in table if row_ok(r)):
-            print(row)
-
-
-wiki_parser = WikiParser(wiki_url)
-print(wiki_parser.elements)
-
-# print(wiki_parser.elements.to_text())
+print(parse_from_file('files/test.html'))
