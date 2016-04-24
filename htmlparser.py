@@ -6,8 +6,6 @@ non_paired_tags = ['area', 'base', 'br', 'col', 'command',
                    'meta', 'param', 'source', 'wbr', 'keygen',
                    'track', 'button']
 
-# todo: remove docstring
-
 
 def parse_from_url(url):
     page = requests.get(url)
@@ -23,34 +21,71 @@ def parse_from_file(filename):
 
 
 def parse_from_string(html_string):
+    def to_tag_strings(html_str):
+        left_pos = html_str.find('<')
+        while left_pos != -1:
+            right_pos = html_str.find('>', left_pos)
+            if right_pos == -1:
+                raise ValueError('String could not be parsed as HTML text. Last tag has no ending')
+            tag_str = html_str[left_pos+1:right_pos]
+            next_left = html_str.find('<', right_pos)
+            content_str = html_str[right_pos+1:next_left]
+            yield tag_str, content_str
+            left_pos = next_left
+
     # Compress the string to a single line:
     new_string = ''
     for line in html_string.split('\n'):
         new_string += line.strip()
     html_string = new_string
 
-    chunk_size = 80
-    super_chunk = ''
-    pos = 0
-    for chunk in (html_string[i:i+chunk_size] for i in range(0, len(html_string)+1, chunk_size)):
-        super_chunk += chunk
-        while pos != -1:
-            element, pos = _parse_chunk(super_chunk)
-            print(element.name)
-            if pos != -1:
-                super_chunk = super_chunk[pos:]
+    depth = 0
+    open_tags = dict()
+    awaiting_elements = set()
+    for tag_string, plain_text in to_tag_strings(html_string):
+        element = _parse_to_element(tag_string, plain_text)
+
+        if element.name[0] == '/':  # if element is closing tag
+            depth -= 1
+            element.name = element.name[1:]
+            try:
+                starting_element = open_tags[element.name].pop()
+            except KeyError:
+                raise ValueError('String could not be parsed as HTML text. '
+                                 'It contains ending tags without corresponding starting tags')
+            starting_element.depth = depth
+
+            for awaiting_element in set(awaiting_elements):
+                if awaiting_element.depth > depth:
+                    starting_element.content.append(awaiting_element)
+                    awaiting_elements.remove(awaiting_element)
+
+            awaiting_elements.add(starting_element)
+        else:  # if element is not a closing tag
+            if element.name == '!DOCTYPE':
+                continue
+            if element.paired:
+                depth += 1
+                if element.name in open_tags:
+                    open_tags[element.name].append(element)
+                else:
+                    open_tags[element.name] = [element]
+            else:
+                element.depth = depth
+                awaiting_elements.add(element)
+    return awaiting_elements.pop()
 
 
-def _parse_chunk(chunk):
-    left_pos = chunk.find('<')
-    right_pos = chunk.find('>', left_pos)+1
-    next_left = chunk.find('<', right_pos)
-
-    text = chunk[right_pos:next_left]
-    tag_string = chunk[left_pos+1:right_pos-1]
+def _parse_to_element(tag_string, text=''):
     attribute_strings = tag_string.split(' ')
     tag_name = attribute_strings.pop(0)
 
+    if tag_name in non_paired_tags:
+        paired = False
+    else:
+        paired = True
+
+    # Parse the attributes of the tag:
     attributes_dict = dict()
     for attribute in attribute_strings:
         try:
@@ -59,10 +94,7 @@ def _parse_chunk(chunk):
             key, value = attribute, ''
         attributes_dict[key] = value.strip('"')
 
-    element = Element(name=tag_name, text=text, attributes=attributes_dict)
-    if element.name == '/html':
-        return element, 0
-    return element, right_pos
+    return Element(name=tag_name, text=text, attributes=attributes_dict, paired=paired)
 
 
 class Element:
@@ -122,7 +154,8 @@ class Element:
         content_string = ''
         for item in self.content:
             content_string += str(item)
-        return '<' + self.name + ' ' + str(self.attributes) + '>\n' + content_string
+        return '<' + self.name + ' ' + str(self.attributes) + '>\n' + self.text + content_string + '</' + self.name + '>\n'
 
 
-print(parse_from_file('files/test.html'))
+# print(parse_from_file('files/test.html'))
+print(parse_from_url(wiki_url))
