@@ -150,12 +150,32 @@ class Element:
             text += content.to_text()
         return text
 
+    @staticmethod
+    def _indent(string):
+        new_string = ''
+        for line in string.split('\n'):
+            line = '    ' + line + '\n'
+            new_string += line
+        return new_string
+
     def __str__(self):
         content_string = ''
-        for item in self.content:
-            content_string += str(item)
-        return '<' + self.name + ' ' + str(self.attributes) + '>\n' + self.text + content_string + '</' + self.name + '>\n'
+        for element in self.content:
+            content_string += str(element)
+        content_string = self._indent(content_string)
+
+        attr_string = ''
+        for attr in self.attributes:
+            attr_string += ' ' + attr + '="' + self.attributes[attr] + '"'
+
+        text = self.text
+        if text:
+            text = '    ' + text
+
+        end_tag = '</' + self.name + '>\n'
+
+        return '<' + self.name + attr_string + '>\n' + text + content_string + '</' + self.name + '>\n'
 
 
-# print(parse_from_file('files/test.html'))
-print(parse_from_url(wiki_url))
+page = parse_from_file('files/test.html')
+print(page)
