@@ -41,7 +41,7 @@ def parse_from_string(html_string):
 
     depth = 0
     open_tags = dict()
-    awaiting_elements = set()
+    awaiting_elements = list()
     for tag_string, plain_text in to_tag_strings(html_string):
         element = _parse_to_element(tag_string, plain_text)
 
@@ -55,12 +55,14 @@ def parse_from_string(html_string):
                                  'It contains ending tags without corresponding starting tags')
             starting_element.depth = depth
 
-            for awaiting_element in set(awaiting_elements):
+            new_awaiting_elements = list()
+            for awaiting_element in awaiting_elements:
                 if awaiting_element.depth > depth:
                     starting_element.content.append(awaiting_element)
-                    awaiting_elements.remove(awaiting_element)
-
-            awaiting_elements.add(starting_element)
+                else:
+                    new_awaiting_elements.append(awaiting_element)
+            awaiting_elements = new_awaiting_elements
+            awaiting_elements.append(starting_element)
         else:  # if element is not a closing tag
             if element.name == '!DOCTYPE':
                 continue
@@ -72,7 +74,7 @@ def parse_from_string(html_string):
                     open_tags[element.name] = [element]
             else:
                 element.depth = depth
-                awaiting_elements.add(element)
+                awaiting_elements.append(element)
     return awaiting_elements.pop()
 
 
@@ -146,6 +148,12 @@ class Element:
 
     def to_text(self):
         text = self.text
+
+        if self.name == 'br':
+            text = '\n' + text
+        if self.name == 'title':
+            return ''
+
         for content in self.content:
             text += content.to_text()
         return text
@@ -153,14 +161,14 @@ class Element:
     @staticmethod
     def _indent(string):
         new_string = ''
-        for line in string.split('\n'):
+        for line in (line for line in string.split('\n') if line):
             line = '    ' + line + '\n'
             new_string += line
         return new_string
 
     def __str__(self):
         content_string = ''
-        for element in self.content:
+        for element in self:
             content_string += str(element)
         content_string = self._indent(content_string)
 
@@ -169,13 +177,14 @@ class Element:
             attr_string += ' ' + attr + '="' + self.attributes[attr] + '"'
 
         text = self.text
-        if text:
-            text = '    ' + text
 
-        end_tag = '</' + self.name + '>\n'
+        end_tag = ''
+        if self.paired:
+            end_tag = '</' + self.name + '>\n'
 
-        return '<' + self.name + attr_string + '>\n' + text + content_string + '</' + self.name + '>\n'
+        return '<' + self.name + attr_string + '>\n' + text + content_string + end_tag
 
 
 page = parse_from_file('files/test.html')
-print(page)
+# page = parse_from_url(wiki_url)
+print(page.to_text())
