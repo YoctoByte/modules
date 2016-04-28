@@ -1,6 +1,5 @@
 import requests
 
-wiki_url = 'https://en.wikipedia.org/wiki/List_of_elements'
 non_paired_tags = ['area', 'base', 'br', 'col', 'command',
                    'embed', 'hr', 'img', 'input', 'link',
                    'meta', 'param', 'source', 'wbr', 'keygen',
@@ -146,6 +145,9 @@ class Element:
         for item in self.content:
             yield item
 
+    def __getitem__(self, index):
+        return self.content[index]
+
     def to_text(self):
         text = self.text
 
@@ -184,7 +186,6 @@ class Element:
 
         return '<' + self.name + attr_string + '>\n' + text + content_string + end_tag
 
-
-page = parse_from_file('files/test.html')
-# page = parse_from_url(wiki_url)
-print(page.to_text())
+# page = parse_from_file('files/test.html')
+# print(page)
+# print(page.to_text())
