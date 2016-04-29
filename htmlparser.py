@@ -113,27 +113,49 @@ class Element:
 
     def get_elements(self, elem_name, recursive=True):
         elements = list()
-        for content in (content for content in self.content if isinstance(content, Element)):
+        for content in self.content:
             if content.name == elem_name:
                 elements.append(content)
             if recursive:
                 elements.extend(content.get_elements(elem_name))
         return elements
 
-    def remove_elements(self, elem_name, recursive=True, attribute=None):
-        for i, content in enumerate(self.content):
-            if isinstance(content, Element):
-                if content.name == elem_name and not attribute:
+    def remove(self, name=None, attribute=None, recursive=True):
+        # TODO: this function does not seem to do anything. Fix it...
+        # First some pre-processing of the arguments:
+        if not name and not attribute:
+            return
+
+        # The function that check whether or not the attribute is in the content item:
+        def attr_match(cont_attrs):
+            if not cont_attrs or attribute:
+                return False
+            try:
+                key, value = attribute[0], attribute[1]
+            except IndexError:
+                raise ValueError('attributes should be a pair (tuple, list, .. ).')
+            if key == '*' and value == '*':
+                return True
+            if key == '*':
+                for k in cont_attrs:
+                    if cont_attrs[k] == value:
+                        return True
+                return False
+            else:
+                if (key in cont_attrs and value == '*') or cont_attrs[key] == value:
+                    return True
+                else:
+                    return False
+
+        try:
+            for i, content in enumerate(self.content):
+                if (content.name in name or not name) and attr_match(content.attributes):
                     del self.content[i]
                     continue
-                try:
-                    if content.name == elem_name and content.attributes[attribute[0]] == attribute[1]:
-                        del self.content[i]
-                        continue
-                except KeyError:
-                    pass
                 if recursive:
-                    content.remove_elements(elem_name, attribute=attribute)
+                    content.remove(name=name, attribute=attribute, recursive=recursive)
+        except TypeError:
+            pass
 
     def append(self, item):
         self.content.append(item)
@@ -148,7 +170,12 @@ class Element:
     def __getitem__(self, index):
         return self.content[index]
 
-    def to_text(self):
+    def to_text(self, exclude=None):
+        if not exclude:
+            exclude = []
+        if isinstance(exclude, str):
+            exclude = [exclude]
+
         text = self.text
 
         if self.name == 'br':
@@ -157,7 +184,8 @@ class Element:
             return ''
 
         for content in self.content:
-            text += content.to_text()
+            if content.name not in exclude:
+                text += content.to_text()
         return text
 
     @staticmethod
@@ -185,7 +213,3 @@ class Element:
             end_tag = '</' + self.name + '>\n'
 
         return '<' + self.name + attr_string + '>\n' + text + content_string + end_tag
-
-# page = parse_from_file('files/test.html')
-# print(page)
-# print(page.to_text())
