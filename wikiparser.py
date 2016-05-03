@@ -1,4 +1,5 @@
-from htmlparser import parse_from_url  # , parse_from_file
+from htmlparser import parse_from_url
+from fileparser import parse_from_string
 
 
 def parse_elements_table():
@@ -40,16 +41,28 @@ def parse_body_row(row):
 
 
 def _parse_value(string):
+    if string in ['–', '']:
+        return None
+    old_string = string
+
+    left, right = string.find('('), string.find(')')
+    if left != -1 and right != -1:
+        if left == 0:
+            string == string[1:-1]
+        else:
+            string = string[0:left-1]
+            # todo: significance
+
+    if string[0] == '[' and string[-1] == ']':
+        string = string[1:-1]
+        # todo: estimate
+
     try:
-        for char in ['[', ']', '(', ')']:
-            string = string.replace(char, ' ')
         value = float(string)
         if value.is_integer():
             value = int(value)
     except ValueError:
-        value = string
-    if string in ['–', '']:
-        value = None
+        value = old_string
     return value
 
 
@@ -62,12 +75,3 @@ def parse_head_row(row):
             text = item.to_text(exclude='sup')
             keys.append(text.split('\n', 1)[0])
     return keys
-
-
-parse_elements_table()
-
-# page = parse_from_file('files/test.html')
-# print(page)
-# page.remove(name='p')
-# page.remove(attribute=('charset', 'UTF-8'))
-# print(page)

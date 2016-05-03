@@ -82,7 +82,8 @@ def _parse_dict(string):
         key = parse_from_string(key_string)
         value = item[len(key_string)+2:].strip()
         try:
-            new_dict[key] = parse_from_string(value)
+            if value:
+                new_dict[key] = parse_from_string(value)
         except TypeError as e:
             raise TypeError('Parse error: ' + str(e))
     return new_dict
