@@ -121,14 +121,15 @@ class Element:
         return elements
 
     def remove(self, name=None, attribute=None, recursive=True):
-        # TODO: this function does not seem to do anything. Fix it...
         # First some pre-processing of the arguments:
         if not name and not attribute:
             return
 
         # The function that check whether or not the attribute is in the content item:
         def attr_match(cont_attrs):
-            if not cont_attrs or attribute:
+            if not attribute:
+                return True
+            if not cont_attrs:
                 return False
             try:
                 key, value = attribute[0], attribute[1]
@@ -142,20 +143,22 @@ class Element:
                         return True
                 return False
             else:
-                if (key in cont_attrs and value == '*') or cont_attrs[key] == value:
+                if key in cont_attrs and value == '*':
                     return True
+                elif key in cont_attrs:
+                    if cont_attrs[key] == value:
+                        return True
+                    else:
+                        return False
                 else:
                     return False
 
-        try:
-            for i, content in enumerate(self.content):
-                if (content.name in name or not name) and attr_match(content.attributes):
-                    del self.content[i]
-                    continue
-                if recursive:
-                    content.remove(name=name, attribute=attribute, recursive=recursive)
-        except TypeError:
-            pass
+        for i, content in enumerate(self.content):
+            if (content.name == name or not name) and attr_match(content.attributes):
+                del self.content[i]
+                continue
+            if recursive:
+                content.remove(name=name, attribute=attribute, recursive=recursive)
 
     def append(self, item):
         self.content.append(item)
